@@ -89,8 +89,6 @@ sudo python3 dhcp_spoofing.py
 ![IP Kali antes del ataque 2](https://i.postimg.cc/GmcNmpsS/DSPOOFING-CAP-1-1.png)
 
 ### Ataque corriendo
-<img src="https://i.postimg.cc/cCR9sq16/DSPOOFING-CAP-2.png" style="max-width:100%;"/>
-
 ![Ataque corriendo](https://i.postimg.cc/cCR9sq16/DSPOOFING-CAP-2.png)
 
 ### Kali Linux luego de correr el ataque
