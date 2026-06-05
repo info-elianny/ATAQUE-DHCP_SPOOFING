@@ -8,6 +8,9 @@
 
 Demostrar cómo un servidor DHCP falso puede responder a las solicitudes DHCP de los clientes antes que el servidor legítimo, permitiendo observar el impacto que tiene la asignación de configuraciones de red controladas por un atacante.
 
+### Topología de Red
+![Topología de Red](https://i.postimg.cc/fL31Qg0N/DSPOOFING-1.png)
+
 ---
 
 ## 🎯 Objetivo del Script
@@ -80,29 +83,16 @@ sudo python3 dhcp_spoofing.py
 
 ## 📸 Capturas de Pantalla
 
-### Topología de Red
-![Topología de Red](images/image2.png)
-
-### Configuración de la red
-![Configuración de la red](images/image3.png)
-
 ### IP de Kali Linux proporcionada por el servidor DHCP legítimo
-![IP Kali antes del ataque](images/image4.png)
+![IP Kali antes del ataque](https://i.postimg.cc/zXY647Dr/DSPOOFING-CAP-1.png)
+
+![IP Kali antes del ataque 2](https://i.postimg.cc/GmcNmpsS/DSPOOFING-CAP-1-1.png)
 
 ### Ataque corriendo
-![Ataque corriendo](images/image6.png)
-
-### Servidor DHCP falso en operación
-![Servidor DHCP falso](images/image7.png)
+![Ataque corriendo](https://i.postimg.cc/cCR9sq16/DSPOOFING-CAP-2.png)
 
 ### Kali Linux luego de correr el ataque
-![Kali después del ataque](images/image8.png)
-
-### Resultado en el cliente
-![Resultado en el cliente](images/image9.png)
-
-### Evidencia final
-![Evidencia final](images/image10.png)
+![Kali después del ataque](https://i.postimg.cc/x1xsj3QT/DSPOOFING-CAP-3.png)
 
 ---
 
@@ -123,10 +113,14 @@ sudo python3 dhcp_spoofing.py
 ### 1. DHCP Snooping
 Función configurada en el switch que clasifica los puertos en **trusted** y **untrusted**. Solo el puerto marcado como trusted puede enviar respuestas DHCP. Cualquier respuesta proveniente de un puerto untrusted es descartada automáticamente.
 
+![DHCP Snooping resultado](https://i.postimg.cc/d0g4rQLQ/DSPOOFING-M-1.png)
+
 ### 2. IP Source Guard
 Verifica que la dirección IP origen de cada paquete que entra por un puerto coincida con la información registrada en la tabla de DHCP Snooping. Si no coincide, el paquete es bloqueado antes de ser procesado.
 
+![IP Source Guard resultado](https://i.postimg.cc/XJFx8MCr/DSPOOFING-M-2.png)
+
 ---
 
-> ⚠️ **Este script es únicamente con fines educativos y de investigación en entornos controlados.**
->  ⚠️ **BY: Elianny**
+> ⚠️ **Este script es únicamente con fines educativos y de investigación en entornos controlados.**  
+> ⚠️ **BY: Elianny**y**
