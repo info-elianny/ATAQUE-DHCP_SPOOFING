@@ -113,25 +113,25 @@ sudo python3 dhcp_spoofing.py
 ### 1. DHCP Snooping
 Función configurada en el switch que clasifica los puertos en *trusted* y *untrusted*. Solo el puerto marcado como trusted puede enviar respuestas DHCP. Cualquier respuesta proveniente de un puerto untrusted es descartada automáticamente.
 
-
+```
 SW1(config)# ip dhcp snooping
 SW1(config)# ip dhcp snooping vlan 1
 SW1(config)# no ip dhcp snooping information option
 SW1(config)# interface e0/0
 SW1(config-if)# ip dhcp snooping trust
 SW1(config-if)# exit
-
+```
 
 ![DHCP Snooping resultado](https://res.cloudinary.com/drzcveg06/image/upload/v1780768089/DSPOOFING-M-1_hmdvdu.png)
 
 ### 2. IP Source Guard
 Verifica que la dirección IP origen de cada paquete que entra por un puerto coincida con la información registrada en la tabla de DHCP Snooping. Si no coincide, el paquete es bloqueado antes de ser procesado.
 
-
+```
 SW1(config)# interface range e0/1 , e0/3
 SW1(config-if-range)# ip verify source
 SW1(config-if-range)# exit
-
+```
 
 ![IP Source Guard resultado](https://res.cloudinary.com/drzcveg06/image/upload/v1780768116/DSPOOFING-M-2_ba1rdz.png)
 
