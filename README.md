@@ -1,6 +1,6 @@
 # 🛡️ Ataque DHCP Spoofing
 
-📹 [Video demostración](https://youtu.be/KckrnfweW6I) | 📂 [Repositorio](https://github.com/info-elianny/ATAQUE-DHCP_SPOOFING)
+📹 [Video demostración](https://youtu.be/KckrnfweW6I) 
 
 ---
 
